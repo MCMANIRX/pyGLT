@@ -217,8 +217,8 @@ def extractImageCMPR(n,img):
                 c1 = readShort()
                 c2,c3 = c2c3(c0,c1)
                 
-                if(c0<c1):
-                    print(c0,c1)
+                #if(c0<c1):
+               #     print(c0,c1)
                 
                 c0 = to888c(c0)
                 c1 = to888c(c1)
@@ -342,12 +342,11 @@ def encodeCMPR(ibuf,n):
         for jj in range(0,int(n.w/8)):
             for k in range(0,4):
                 
-                texel = ibuf[ii*8 + pattern[k][0]*4:4 + ii*8 + pattern[k][0]*4,jj*8 + pattern[k][1]*4:4 + jj*8 + pattern[k][1]*4]
+                texel = ibuf[ii*8 + pattern[k][0]*4:4 + ii*8 + pattern[k][0]*4, jj*8 + pattern[k][1]*4:4 + jj*8 + pattern[k][1]*4]
                 indices = []
                 indexu32 = 0
                 
                 if(alpha):
-                    quit()
                     c1,c0 = minmax(texel)
                     pal[0] = c0
                     pal[1] = c1
@@ -381,12 +380,7 @@ def encodeCMPR(ibuf,n):
                     
                 c0565 = to565(c0)
                 c1565 = to565(c1)
-                
-                # may remove later
-                if(c0565<=c1565):
-                    while(c0565<=c1565):
-                        c0565+=1
-                            
+                          
                     
                 c0_buf = struct.pack('>H',c0565)
                 c1_buf = struct.pack('>H',c1565)
@@ -402,22 +396,25 @@ def encodeCMPR(ibuf,n):
 
 def to5a3From888(c, alpha):
     
+    argb = [c[0],c[3],c[2],c[1]]
+    
     if(not alpha):
         a= 0x1
-        r = cc85[(c[0])&0xff]
-        g = cc85[(c[1])&0xff]
-        b = cc85[c[2]&0xff]
+        r = cc85[(argb[2])&0xff]
+        g = cc85[(argb[1])&0xff]
+        b = cc85[(argb[0])&0xff]
         ret = (a<<15) | r <<10 | g<<5 | b
     else:
-        a = cc83[(c[0])&0xff]
-        r = cc84[(c[0])&0xff]
-        g = cc84[(c[1])&0xff]
-        b = cc84[c[2]&0xff]
+        a = cc83[(argb[3])&0xff]
+        r = cc84[(argb[2])&0xff]
+        g = cc84[(argb[1])&0xff]
+        b = cc84[(argb[0])&0xff]
             
         ret = (0x0 << 15)&0x7 | a<< 12 | r <<8 | g<<4 | b
         
         return ret
-        
+
+           
 def encodeRGB5a3(ibuf,n):
     buf = []
     for ii in range(0,int(n.h/4)):
@@ -426,11 +423,10 @@ def encodeRGB5a3(ibuf,n):
             texel = ibuf[ii*4:(ii*4)+4 ,jj*4:(jj*4)+4]
             for i in range(0,4):
                 for j in range(0,4):     
-                    if texel[i,j][0]& 0xFF == 0xFF:
+                    if texel[i,j][0]& 0xFF >= 0x80:
                         color = to5a3From888(texel[i,j], False)
                     else:
                         color = to5a3From888(texel[i,j], True)
-                    #print(ii,jj,i,j,n.h,n.w)
                     if(color):
                         buf+= struct.pack(">H",color)
     while(len(buf)%0x10!=0):
@@ -497,7 +493,7 @@ def encode():
     for image in images:
         n = NLGImage()
         n.size = 0
-        tbuf = cv2.imread(path+"/"+image)
+        tbuf = cv2.imread(path+"/"+image,cv2.IMREAD_UNCHANGED)
         nstr = image.split('_')
         n.hash = int(nstr[0],16)
         n.enc = int(nstr[2][0])
@@ -521,7 +517,11 @@ def encode():
         offset+=n.size 
         #print("offset: ",offset)  
         out.write(struct.pack(">I",n.size))
-        oadvance(out,TO_NEXT_IMG)
+        if(n.enc==0x6):
+            out.write('CMPR'.encode('utf=8'))
+        elif(n.enc==0x5):
+            out.write('RGB5'.encode('utf=8'))
+        #oadvance(out,TO_NEXT_IMG)
         
     # write images
     for n in nimg:
