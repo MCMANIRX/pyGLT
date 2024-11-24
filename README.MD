@@ -12,5 +12,5 @@ python name.glt [enc|dec]
 
 | Encoding | Encode | Decode |
 |-------------|-|--------------|
-| CMPR | Yes (some artifacts) | Yes
-| RGB5a3| No | Yes
+| CMPR | Yes | Yes
+| RGB5a3| Yes | Yes

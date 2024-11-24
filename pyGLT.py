@@ -11,7 +11,9 @@ IMAGE_BEGIN_PTR = 0x10
 TO_NEXT_IMG = 4
 TO_ENC = 0x5
 TO_WIDTH = 0x4
+TO_OLD_WIDTH = 0x2
 TO_IMG = 0xE
+TO_OLD_IMG = 0x4
 
 cc38 = [
          0x00,0x24,0x49,0x6d, 0x92,0xb6,0xdb,0xff
@@ -113,6 +115,7 @@ cc86 = [
 
 f = []
 path = ""
+isRLT = False
 
 class NLGImage:
     hash = 0
@@ -201,7 +204,7 @@ def c2c3(c0,c1):
 def writeImage(hash,enc,img): 
     os.makedirs(path, exist_ok=True)
     cv2.imwrite(path+"//"+hex(hash)[2:]+"_enc_"+str(enc)+".png", img)
-    print(f"Wrote {hash}.png to {path}/")
+    print(f"Wrote {hex(hash).split('0x')[1]}_enc_{enc}.png to {path}/")
        
         
 pattern =[[0,0],[0,1],[1,0],[1,1]] 
@@ -396,23 +399,26 @@ def encodeCMPR(ibuf,n):
 
 def to5a3From888(c, alpha):
     
-    argb = [c[0],c[3],c[2],c[1]]
+    argb = [c[3],c[2],c[1],c[0]]
     
-    if(not alpha):
-        a= 0x1
-        r = cc85[(argb[2])&0xff]
-        g = cc85[(argb[1])&0xff]
-        b = cc85[(argb[0])&0xff]
-        ret = (a<<15) | r <<10 | g<<5 | b
+    #print(argb)
+    
+    if(alpha):
+        a = cc83[(argb[0])]&0x7
+        r = cc84[(argb[1])]&0xf
+        g = cc84[(argb[2])]&0xf
+        b = cc84[(argb[3])]&0xf
+        ret =  (a<< 12) | (r <<8) | (g<<4) | (b)
     else:
-        a = cc83[(argb[3])&0xff]
-        r = cc84[(argb[2])&0xff]
-        g = cc84[(argb[1])&0xff]
-        b = cc84[(argb[0])&0xff]
+        a= 0x1
+        r = cc85[(argb[1])]&0x1f
+        g = cc85[(argb[2])]&0x1f
+        b = cc85[(argb[3])]&0x1f
+        ret = (a<<15) | (r <<10) | (g<<5) | b
+
             
-        ret = (0x0 << 15)&0x7 | a<< 12 | r <<8 | g<<4 | b
         
-        return ret
+    return ret
 
            
 def encodeRGB5a3(ibuf,n):
@@ -422,15 +428,14 @@ def encodeRGB5a3(ibuf,n):
             
             texel = ibuf[ii*4:(ii*4)+4 ,jj*4:(jj*4)+4]
             for i in range(0,4):
-                for j in range(0,4):     
-                    if texel[i,j][0]& 0xFF >= 0x80:
-                        color = to5a3From888(texel[i,j], False)
-                    else:
-                        color = to5a3From888(texel[i,j], True)
-                    if(color):
-                        buf+= struct.pack(">H",color)
+                for j in range(0,4):  
+                    
+                    color = to5a3From888(texel[i,j], texel[i,j][3]<=0x80)
+                    buf+= struct.pack(">H",color)
+                    
     while(len(buf)%0x10!=0):
         buf+= struct.pack("B",0)
+        
     n.size = len(buf)+0x20
     n.buf = buf
                 
@@ -444,8 +449,26 @@ def writeEmpty(o,end):
 def decode():
     advance(IMAGE_COUNT)
     imageCount = readInt()
+    
+    isPyGLT = f.read(1)==b'p' #find signature of modified files
 
-    f.seek(IMAGE_BEGIN_PTR)
+    advance(7)
+    while(readInt()==0x0):
+        None
+    f.seek(f.tell()-4)
+   # print(f.tell())
+    
+    isOld = False   
+    advance((imageCount)*0x10 + 0xc )
+    if(readShort()!=0x0 and not isPyGLT):
+        isOld = True
+    
+    f.seek(f.tell() - ((imageCount)*0x10 + 0xc + 0x2))
+
+  #  print(isOld)
+   # f.seek(f.tell()-0x10)
+   # print(f.tell())
+   #f.seek(IMAGE_BEGIN_PTR)
     NLGImages = []
 
 
@@ -471,10 +494,18 @@ def decode():
         n.mip = readInt()
         advance(TO_ENC)
         n.enc = readByte()
-        advance(TO_WIDTH)
-        n.w = readShort()
-        n.h = readShort()
-        advance(TO_IMG)
+        if(isOld):
+            advance(TO_OLD_WIDTH)    
+            n.w = readShort()
+            n.h = readShort()
+            while(readInt()==0x0):
+                None
+            f.seek(f.tell()-4)
+        else:
+            advance(TO_WIDTH)
+            n.w = readShort()
+            n.h = readShort()
+            advance(TO_IMG)
         extractImage(n)  
 
 def encodeImage(ibuf,n):
@@ -502,8 +533,11 @@ def encode():
         encodeImage(tbuf,n)
         nimg.append(n)
         print("image "+image+" done.")
-   
-    out = open(path+"/"+path+".rlt",'wb')
+    
+    ext = 'glt'
+    if isRLT:
+        ext = 'rlt'
+    out = open(path+"/"+path+"."+ext,'wb')
     out.write("PTLG".encode('utf-8'))
     out.write(struct.pack(">I",len(nimg)))
     out.write("pyGLT".encode('utf-8'))
@@ -567,8 +601,11 @@ if len(sys.argv)  ==0:
     
 fname = sys.argv[1]
 f = open(fname,mode="rb")
+
 path = os.path.splitext(fname)[0]
 print(path)
+
+isRLT = sys.argv[1].split('.')[1] == 'rlt'
 _encode = False
 if(len(sys.argv)>=2):
     _encode = sys.argv[2] == 'enc'
